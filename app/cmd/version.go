@@ -25,8 +25,9 @@ import (
 )
 
 var (
-	Version      = "unknown"
-	GitCommitLog = "unknown"
+	KarmadaVersion = "unknown"
+	Version        = "unknown"
+	GitCommitID    = "unknown"
 )
 
 //var Verbose bool
@@ -39,8 +40,8 @@ func newCmdVersion() *cobra.Command {
 		Short: "Print the version information",
 		Long:  `Print the current versions information.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("Version: %s\nGitCommitLog: %s\nGoVersion: %s\nBuildDate: %s\nPlatform: %s/%s\n",
-				Version, GitCommitLog, runtime.Version(), time.Now().UTC().Format("2006-01-02T15:04:05Z"), runtime.GOOS, runtime.GOARCH)
+			fmt.Printf("Version: %s-karmada:%s\nGitCommitID: %s\nBuildDate: %s\nGoVersion: %s\nPlatform: %s/%s\n",
+				Version, KarmadaVersion, GitCommitID, time.Now().UTC().Format("2006-01-02T15:04:05Z"), runtime.Version(), runtime.GOOS, runtime.GOARCH)
 		},
 	}
 	//cmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false, "verbose output")

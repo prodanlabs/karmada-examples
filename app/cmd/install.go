@@ -38,7 +38,7 @@ func newCmdInstall() *cobra.Command {
 	}
 
 	// cert
-	cmd.PersistentFlags().StringVar(&k8s.ExternalIP, "cert-external-ip", "", "the external IP of Karmada certificate (e.q 192.168.1.2,172.16.1.2)")
+	cmd.PersistentFlags().StringVar(&k8s.ExternalIP, "cert-external-ip", "", "the external IP of Karmada certificate (e.g 192.168.1.2,172.16.1.2)")
 
 	// Kubernetes
 	cmd.PersistentFlags().StringVarP(&k8s.KubeConfig, "kubeconfig", "", filepath.Join(utils.HomeDir(), ".kube", "config"), "absolute path to the kubeconfig file")
@@ -55,7 +55,7 @@ func newCmdInstall() *cobra.Command {
 	cmd.PersistentFlags().StringVarP(&k8s.EtcdStorageSize, "etcd-storage-size", "", "1Gi", "etcd data path,valid in pvc mode.")
 
 	// karmada
-	cmd.PersistentFlags().StringVar(&k8s.KArmadaMasterIP, "master", "", "Karmada master ip. (e.g. --master 192.168.1.2)")
+	cmd.PersistentFlags().StringVar(&k8s.KArmadaMasterIP, "master", "", "Karmada master ip. (e.g. --master 192.168.1.2,192.168.1.3)")
 	cmd.PersistentFlags().Int32VarP(&k8s.KArmadaMasterPort, "port", "p", 5443, "Karmada apiserver port")
 	cmd.PersistentFlags().StringVarP(&k8s.DataPath, "karmada-data", "d", "/var/lib/karmada", "karmada data path. kubeconfig and cert files")
 	cmd.PersistentFlags().StringVarP(&k8s.KArmadaApiServerImage, "karmada-apiserver-image", "", "k8s.gcr.io/kube-apiserver:v1.20.11", "Kubernetes apiserver image")

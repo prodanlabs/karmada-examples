@@ -91,7 +91,7 @@ type Config struct {
 	EtcdStatefulSetName         string
 	EtcdServiceName             string
 	EtcdReplicas                int32
-	KArmadaMasterIP             string
+	KArmadaMasterIP             []net.IP
 	KArmadaApiServerServiceName string
 	KArmadaWebhookServiceName   string
 	FlagsExternalIP             string
@@ -375,7 +375,7 @@ func (c *Config) kArmadaCertCfg(notAfter *time.Time) *CertConfig {
 		dns = append(dns, hostName)
 	}
 
-	ips := utils.FlagsExternalIP(c.FlagsExternalIP)
+	ips := utils.FlagsIP(c.FlagsExternalIP)
 
 	internetIP, err := utils.InternetIP()
 	if err != nil {
@@ -388,8 +388,12 @@ func (c *Config) kArmadaCertCfg(notAfter *time.Time) *CertConfig {
 		ips,
 		utils.StringToNetIP("127.0.0.1"),
 		utils.StringToNetIP("10.254.0.1"),
-		utils.StringToNetIP(c.KArmadaMasterIP),
 	)
+
+	for _, v := range c.KArmadaMasterIP {
+		ips = append(ips, v)
+	}
+	klog.Info("certificate ip ", ips)
 
 	return &CertConfig{Config: certutil.Config{
 		CommonName:   "system:admin",

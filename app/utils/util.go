@@ -56,12 +56,12 @@ func IsIP(s string) bool {
 	return true
 }
 
-// flagsExternalIP Receive external IP from command flags
-func FlagsExternalIP(externalIPs string) []net.IP {
+// FlagsIP Receive master external IP from command flags
+func FlagsIP(ip string) []net.IP {
 
 	var ips []net.IP
 
-	arr := strings.Split(externalIPs, separator)
+	arr := strings.Split(ip, separator)
 	for _, v := range arr {
 		ips = append(ips, StringToNetIP(v))
 	}

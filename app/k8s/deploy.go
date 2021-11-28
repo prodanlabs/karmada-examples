@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"path/filepath"
 
 	"github.com/pkg/errors"
@@ -81,11 +82,13 @@ type InstallOptions struct {
 	CertAndKeyFileData map[string][]byte
 	KubeClientSet      *kubernetes.Clientset
 	RestConfig         *rest.Config
+	MasterIP           []net.IP
 }
 
 type InstallOptionsController interface {
 	initialization() error
 	CreateNamespace() error
+	AddNodeSelectorLabels() error
 	CreateServiceAccount(sa *[]corev1.ServiceAccount) error
 	CreateClusterRole(clusterRole *rbacv1.ClusterRole) error
 	CreateClusterRoleBinding(clusterRole *rbacv1.ClusterRoleBinding) error
@@ -100,11 +103,11 @@ func Deploy() {
 	cert := &certs.Config{
 		Namespace:                   Namespace,
 		PkiPath:                     DataPath,
-		KArmadaMasterIP:             KArmadaMasterIP,
 		FlagsExternalIP:             ExternalIP,
 		EtcdReplicas:                EtcdReplicas,
 		EtcdStatefulSetName:         etcdStatefulSetName,
 		EtcdServiceName:             etcdServiceName,
+		KArmadaMasterIP:             utils.FlagsIP(KArmadaMasterIP),
 		KArmadaApiServerServiceName: kArmadaApiServerServiceName,
 		KArmadaWebhookServiceName:   kArmadaWebhookServiceName,
 	}
@@ -122,7 +125,7 @@ func Deploy() {
 	}
 
 	// Create karmada kubeconfig
-	serverURL := fmt.Sprintf("https://%s:%v", KArmadaMasterIP, KArmadaMasterPort)
+	serverURL := fmt.Sprintf("https://%s:%v", i.MasterIP[0].String(), KArmadaMasterPort)
 	if err = utils.WriteKubeConfigFromSpec(serverURL, UserName, ClusterName, DataPath, KArmadaKubeConfigName, i.CertAndKeyFileData[i.CertAndKeyFileName.CACertFileName],
 		i.CertAndKeyFileData[i.CertAndKeyFileName.KArmadaKeyFileName], i.CertAndKeyFileData[i.CertAndKeyFileName.KArmadaCertFileName]); err != nil {
 		klog.Exitln("Failed to create karmada kubeconfig file.", err)
@@ -206,7 +209,7 @@ func Deploy() {
 	}
 
 	// add node labels
-	if err = AddNodeSelectorLabels(i.KubeClientSet); err != nil {
+	if err = i.AddNodeSelectorLabels(); err != nil {
 		klog.Exitf("Node failed to add '%s' label. %v", NodeSelectorLabels, err)
 	}
 
@@ -333,6 +336,10 @@ func (i *InstallOptions) initialization() error {
 	}
 	i.KubeClientSet = clientSet
 
+	i.MasterIP = utils.FlagsIP(KArmadaMasterIP)
+
+	klog.Infof("master ip: %s", i.MasterIP)
+
 	return nil
 }
 
@@ -340,9 +347,6 @@ func verifying() {
 
 	if KArmadaMasterIP == "" {
 		klog.Exitln("error verifying flag, master is missing. See 'kaadm install --help'.")
-	}
-	if !utils.IsIP(KArmadaMasterIP) {
-		klog.Exitf("error verifying flag value, '%s' is not a valid flag value. See 'kaadm install --help'.", KArmadaMasterIP)
 	}
 
 	if EtcdStorageMode == "hostPath" && EtcdReplicas != 1 {

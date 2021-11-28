@@ -29,14 +29,18 @@ func TestAddNodeSelectorLabels(t *testing.T) {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	KArmadaMasterIP = "172.31.6.145"
+	KArmadaMasterIP = "172.31.6.145,172.31.6.146"
 	kubeClient, err := utils.NewClientSet(restConfig)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	if err = AddNodeSelectorLabels(kubeClient); err != nil {
+	i := &InstallOptions{}
+	i.KubeClientSet = kubeClient
+	i.MasterIP = utils.FlagsIP(KArmadaMasterIP)
+
+	if err = i.AddNodeSelectorLabels(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}

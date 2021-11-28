@@ -17,19 +17,21 @@ package certs
 
 import (
 	"fmt"
+	"github.com/prodanlabs/kaadm/app/utils"
 	"os"
 	"testing"
 )
 
 func TestCertificateGeneration(t *testing.T) {
 
+	KArmadaMasterIP := "172.31.6.145,172.31.6.146,172.31.6.149"
 	c := &Config{
 		PkiPath:                     "./test-Certs-tmp",
 		Namespace:                   "karmada-system",
 		EtcdStatefulSetName:         "etcd",
 		EtcdServiceName:             "etcd",
 		EtcdReplicas:                3,
-		KArmadaMasterIP:             "192.168.0.1",
+		KArmadaMasterIP:             utils.FlagsIP(KArmadaMasterIP),
 		KArmadaApiServerServiceName: "karmada-apiserver",
 		KArmadaWebhookServiceName:   "karmada-webhook",
 		FlagsExternalIP:             "172.16.0.2,172.16.0.3",
