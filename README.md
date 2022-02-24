@@ -1,4 +1,9 @@
-# karmadactl
-karmada cli tool
+# karmada-examples
 
-The tool is being refactored, so stay tuned.
+`karmada-examples `is Functional example of karmada
+
+- [x] karmada-custom-controller-manager
+
+
+
+`karmadactl` is still being implemented...
