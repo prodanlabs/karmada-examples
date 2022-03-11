@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    k8s-app: prometheus
+    kubernetes.io/cluster-service: "true"
+spec:
+  serviceName: "prometheus"
+  replicas: 1
+  podManagementPolicy: "Parallel"
+  updateStrategy:
+    type: "RollingUpdate"
+  selector:
+    matchLabels:
+      k8s-app: prometheus
+  template:
+    metadata:
+      labels:
+        k8s-app: prometheus
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: k8s-app
+                    operator: In
+                    values:
+                      - prometheus
+              topologyKey: node-role.kubernetes.io/master
+      priorityClassName: system-cluster-critical
+      serviceAccountName: prometheus
+      initContainers:
+        - name: "init-chown-data"
+          image: "busybox:latest"
+          imagePullPolicy: "IfNotPresent"
+          command: ["chown", "-R", "65534:65534", "/data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+              subPath: ""
+      containers:
+        - name: prometheus
+          image: docker.io/prom/prometheus:v2.33.4
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - --config.file=/etc/prometheus/config/prometheus-kubernetes.yml
+            - --enable-feature=expand-external-labels
+            - --storage.tsdb.path=/data
+            - --web.console.libraries=/etc/prometheus/console_libraries
+            - --web.console.templates=/etc/prometheus/consoles
+            - --web.enable-lifecycle
+            - --storage.tsdb.retention=2d
+          ports:
+            - containerPort: 9090
+              protocol: TCP
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: 9090
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+#          resources:
+#            requests:
+#              cpu: 100m
+#              memory: 128Mi
+#            limits:
+#              cpu: 1000m
+#              memory: 1024Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/config
+            - name: data
+              mountPath: /data
+              subPath: ""
+      terminationGracePeriodSeconds: 60
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - emptyDir: {}
+          name: data

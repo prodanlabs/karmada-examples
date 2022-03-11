@@ -1,0 +1,147 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |-
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 10m
+      receiver: itesttech
+
+    templates:
+      - '/etc/alertmanager/wechat.tmpl'
+
+    receivers:
+    - name: "itesttech"
+      wechat_configs:
+      - send_resolved: true
+        to_user: ""
+        to_party: "${TO_PARTY}"
+        to_tag: ""
+        agent_id: "${AGENT_ID}"
+        corp_id: "${CORP_ID}"
+        api_secret: "${API_SECRET}"
+
+  wechat.tmpl: |-
+    {{ define "wechat.default.message" }}
+    {{- if gt (len .Alerts.Firing) 0 -}}
+    告警状态：故障发生[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{- end -}}]
+    {{ range .Alerts -}}
+    集群名字：{{ .Labels.cluster }}
+    {{- if gt (len .Labels.namespace) 0 }}
+    命名空间：{{ .Labels.namespace }}{{- end }}
+    告警类型：{{ .Labels.alertname }}
+    告警级别：{{ .Labels.severity }}
+    {{- if gt (len .Labels.instance) 0 }}
+    告警实例：{{ .Labels.instance }} {{- end }}
+    告警主题：{{ .Annotations.summary }}
+    告警详情：{{ .Annotations.description }}
+    触发时间：{{ (.StartsAt.Add 28800e9).Format "2006-01-02 15:04:05" }}
+    {{- end -}}
+    {{- end -}}
+    {{- if gt (len .Alerts.Resolved) 0 -}}
+    告警状态：故障恢复[{{ .Status | toUpper }}{{ if eq .Status "resolved" }}:{{ .Alerts.Resolved | len }}{{- end -}}]
+    {{ range .Alerts -}}
+    集群名字：{{ .Labels.cluster }}
+    {{- if gt (len .Labels.namespace) 0 }}
+    命名空间：{{ .Labels.namespace }}{{- end }}
+    告警类型：{{ .Labels.alertname }}
+    告警级别：{{ .Labels.severity }}
+    {{- if gt (len .Labels.instance) 0 }}
+    告警实例：{{- .Labels.instance }} {{- end }}
+    告警主题：{{ .Annotations.summary }}
+    告警详情：{{ .Annotations.description }}
+    触发时间：{{ (.StartsAt.Add 28800e9).Format "2006-01-02 15:04:05" }}
+    恢复时间：{{ (.EndsAt.Add 28800e9).Format "2006-01-02 15:04:05" }}
+    {{- end -}}
+    {{- end -}}
+    {{- end -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: monitoring
+  labels:
+    app: alertmanager
+spec:
+  replicas: 1
+  minReadySeconds: 30
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+  template:
+    metadata:
+      labels:
+        app: alertmanager
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - alertmanager
+              topologyKey: node-role.kubernetes.io/master
+      terminationGracePeriodSeconds: 60
+      restartPolicy: Always
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.23.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config.file=/etc/alertmanager/alertmanager.yml
+            - --storage.path=/data
+            - --cluster.advertise-address=0.0.0.0:9093
+            - --log.level=debug
+          volumeMounts:
+            - mountPath: /etc/alertmanager
+              name: alertmanager-config
+            - mountPath: /data
+              name: data
+          ports:
+            - containerPort: 9093
+              protocol: TCP
+              name: http
+          livenessProbe:
+            tcpSocket:
+              port: 9093
+            initialDelaySeconds: 120
+            periodSeconds: 60
+          readinessProbe:
+            httpGet:
+              path: /#/status
+              port: 9093
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+      volumes:
+        - name: alertmanager-config
+          configMap:
+            name: alertmanager-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  ports:
+    - port: 9093
+      targetPort: 9093
+      protocol: TCP
+      name: http
+  selector:
+    app: alertmanager

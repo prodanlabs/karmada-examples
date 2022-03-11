@@ -1,0 +1,34 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: prometheus-headless
+  namespace: monitoring
+  labels:
+    kubernetes.io/name: "Prometheus"
+    kubernetes.io/cluster-service: "true"
+spec:
+  clusterIP: None
+  ports:
+    - name: http
+      port: 9090
+      protocol: TCP
+      targetPort: 9090
+  selector:
+    k8s-app: prometheus
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: prometheus
+  namespace: monitoring
+  labels:
+    kubernetes.io/name: "Prometheus"
+    kubernetes.io/cluster-service: "true"
+spec:
+  ports:
+    - name: http
+      port: 9090
+      protocol: TCP
+      targetPort: 9090
+  selector:
+    k8s-app: prometheus

@@ -1,0 +1,20 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: alertmanager
+  namespace: monitoring
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Service
+      name: alertmanager
+    - apiVersion: v1
+      kind: ConfigMap
+      name: alertmanager-config
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: alertmanager
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member5

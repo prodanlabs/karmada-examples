@@ -1,0 +1,27 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Service
+      name: prometheus-headless
+    - apiVersion: v1
+      kind: Service
+      name: prometheus
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: prometheus
+    - apiVersion: v1
+      kind: ConfigMap
+      name: prometheus-config
+    - apiVersion: v1
+      kind: ServiceAccount
+      name: prometheus
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member4
+        - member5

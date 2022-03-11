@@ -1,0 +1,38 @@
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: OverridePolicy
+metadata:
+  name: prometheus-member4
+  namespace: monitoring
+spec:
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: prometheus
+  targetCluster:
+    clusterNames:
+      - member4
+  overriders:
+    plaintext:
+      - path: "/spec/template/spec/containers/0/env"
+        operator: add
+        value: [{"name":"CLUSTER_NAME","value":"member4"}]
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: OverridePolicy
+metadata:
+  name: prometheus-member5
+  namespace: monitoring
+spec:
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: prometheus
+  targetCluster:
+    clusterNames:
+      - member5
+  overriders:
+    plaintext:
+      - path: "/spec/template/spec/containers/0/env"
+        operator: add
+        value: [{"name":"CLUSTER_NAME","value":"member5"}]

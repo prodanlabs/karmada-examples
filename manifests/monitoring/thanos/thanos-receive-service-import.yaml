@@ -1,0 +1,24 @@
+---
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceImport
+metadata:
+  name: thanos-service
+spec:
+  type: ClusterSetIP
+  ports:
+    - port: 10901
+      protocol: TCP
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: service-import-member5
+spec:
+  resourceSelectors:
+    - apiVersion: multicluster.x-k8s.io/v1alpha1
+      kind: ServiceImport
+      name: thanos-service
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member5

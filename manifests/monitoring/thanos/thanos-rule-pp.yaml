@@ -1,0 +1,23 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: thanos-rule
+  namespace: monitoring
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ServiceAccount
+      name: thanos-rule
+    - apiVersion: v1
+      kind: Service
+      name: thanos-rule
+    - apiVersion: v1
+      kind: ConfigMap
+      name: rules
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: thanos-rule
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member5

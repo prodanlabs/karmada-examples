@@ -1,0 +1,24 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: thanos
+  namespace: monitoring
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: ServiceAccount
+      name: thanos-receive
+    - apiVersion: v1
+      kind: Service
+      name: thanos-receive
+    - apiVersion: v1
+      kind: ConfigMap
+      name: hashring
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: thanos-receive
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - member4
+        - member5
