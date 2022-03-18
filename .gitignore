@@ -1,2 +1,4 @@
 .idea/
 /karmada-custom-controller-manager
+/karmada-custom-webhook
+/manifests/webhook/test-certs

@@ -1,0 +1,22 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-config
+  labels:
+    app: validating-config
+webhooks:
+  - name: "namespace-policy.example.com"
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["DELETE"]
+        resources: ["namespaces"]
+        scope: "Cluster"
+    clientConfig:
+      url: https://172.31.6.145:8443/validate-namespace
+      caBundle: {{caBundle}}
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: 3

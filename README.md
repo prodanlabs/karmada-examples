@@ -4,3 +4,4 @@
 
 - [x] karmada-custom-controller-manager
 - [x] binary install karmada documentation
+- [x] karmada-custom-webhook
