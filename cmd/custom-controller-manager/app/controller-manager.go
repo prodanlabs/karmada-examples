@@ -9,13 +9,13 @@ import (
 
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"github.com/prodanlabs/karmada-examples/cmd/custom-controller-manager/app/options"
 	"github.com/prodanlabs/karmada-examples/pkg/controllers/deployment"
+	"github.com/prodanlabs/karmada-examples/pkg/util"
 )
 
 const (
@@ -43,20 +43,12 @@ func NewCustomControllerManagerCommand(ctx context.Context) *cobra.Command {
 	return cmd
 }
 
-func initConfig(c *rest.Config) {
-	c.QPS = float32(5.000000)
-	c.Burst = 10
-	c.ContentType = "application/json"
-	c.AcceptContentTypes = "application/json"
-	c.UserAgent = rest.DefaultKubernetesUserAgent()
-}
-
 func Run(ctx context.Context, opts *options.Options) error {
 	config, err := ctrl.GetConfig()
 	if err != nil {
 		return err
 	}
-	initConfig(config)
+	util.SetupKubeConfig(config)
 
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
 		Scheme:                     runtime.NewScheme(),

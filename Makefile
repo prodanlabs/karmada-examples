@@ -11,6 +11,11 @@ karmada-custom-webhook:$(SOURCES)
 		CGO_ENABLED=0 GOOS=$(GOOS) go build \
 			-o karmada-custom-webhook \
 			cmd/custom-webhook/custom-webhook.go
+
+custom-karmadactl:$(SOURCES)
+		CGO_ENABLED=0 GOOS=$(GOOS) go build \
+			-o custom-karmadactl \
+			cmd/custom-karmadactl/custom-karmadactl.go
 update:
 		go mod tidy && go mod vendor
 
