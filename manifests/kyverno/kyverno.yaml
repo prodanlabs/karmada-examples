@@ -1,0 +1,204 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kyverno
+    app.kubernetes.io/component: kyverno
+    app.kubernetes.io/instance: kyverno
+    app.kubernetes.io/name: kyverno
+    app.kubernetes.io/part-of: kyverno
+    app.kubernetes.io/version: latest
+  name: kyverno-svc
+  namespace: kyverno
+spec:
+  type: NodePort
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+      nodePort: 33443
+  selector:
+    app: kyverno
+    app.kubernetes.io/name: kyverno
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kyverno
+    app.kubernetes.io/component: kyverno
+    app.kubernetes.io/instance: kyverno
+    app.kubernetes.io/name: kyverno
+    app.kubernetes.io/part-of: kyverno
+    app.kubernetes.io/version: latest
+  name: kyverno-svc-metrics
+  namespace: kyverno
+spec:
+  ports:
+    - name: metrics-port
+      port: 8000
+      targetPort: metrics-port
+  selector:
+    app: kyverno
+    app.kubernetes.io/name: kyverno
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kyverno
+    app.kubernetes.io/component: kyverno
+    app.kubernetes.io/instance: kyverno
+    app.kubernetes.io/name: kyverno
+    app.kubernetes.io/part-of: kyverno
+    app.kubernetes.io/version: latest
+  name: kyverno
+  namespace: kyverno
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kyverno
+      app.kubernetes.io/name: kyverno
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 40%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kyverno
+        app.kubernetes.io/component: kyverno
+        app.kubernetes.io/instance: kyverno
+        app.kubernetes.io/name: kyverno
+        app.kubernetes.io/part-of: kyverno
+        app.kubernetes.io/version: latest
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - kyverno
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+      containers:
+        - args:
+            - --filterK8sResources=[Event,*,*][*,kube-system,*][*,kube-public,*][*,kube-node-lease,*][Node,*,*][APIService,*,*][TokenReview,*,*][SubjectAccessReview,*,*][*,kyverno,kyverno*][Binding,*,*][ReplicaSet,*,*][ReportChangeRequest,*,*][ClusterReportChangeRequest,*,*][PolicyReport,*,*][ClusterPolicyReport,*,*]
+            - -v=2
+            - --autogenInternals=false
+            - --kubeconfig=/etc/karmada/karmada-apiserver.config
+            - --serverIP=172.31.6.145:33443
+          env:
+            - name: INIT_CONFIG
+              value: kyverno
+            - name: METRICS_CONFIG
+              value: kyverno-metrics
+            - name: KYVERNO_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: KYVERNO_SVC
+              value: kyverno-svc
+            - name: TUF_ROOT
+              value: /.sigstore
+          image: prodan/kyverno:1.7-dev-232-gf33af3259
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 2
+            httpGet:
+              path: /health/liveness
+              port: 9443
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            successThreshold: 1
+            timeoutSeconds: 5
+          name: kyverno
+          ports:
+            - containerPort: 9443
+              name: https
+              protocol: TCP
+            - containerPort: 8000
+              name: metrics-port
+              protocol: TCP
+          readinessProbe:
+            failureThreshold: 4
+            httpGet:
+              path: /health/readiness
+              port: 9443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            limits:
+              memory: 384Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - mountPath: /.sigstore
+              name: sigstore
+            - mountPath: /etc/karmada
+              name: kubeconfig
+              readOnly: true
+      initContainers:
+        - env:
+            - name: METRICS_CONFIG
+              value: kyverno-metrics
+            - name: KYVERNO_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          image: ghcr.io/kyverno/kyvernopre:latest
+          imagePullPolicy: IfNotPresent
+          name: kyverno-pre
+          resources:
+            limits:
+              cpu: 100m
+              memory: 256Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          volumeMounts:
+            - mountPath: /etc/karmada
+              name: kubeconfig
+              readOnly: true
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: kyverno-service-account
+      volumes:
+        - emptyDir: {}
+          name: sigstore
+        - name: kubeconfig
+          secret:
+            defaultMode: 420
+            secretName: karmada-config
