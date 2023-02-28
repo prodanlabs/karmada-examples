@@ -4,10 +4,13 @@ package versioned
 
 import (
 	"fmt"
+	"net/http"
 
 	clusterv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/cluster/v1alpha1"
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/config/v1alpha1"
+	networkingv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/networking/v1alpha1"
 	policyv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/policy/v1alpha1"
+	searchv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/search/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha2"
 	discovery "k8s.io/client-go/discovery"
@@ -19,20 +22,23 @@ type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	ClusterV1alpha1() clusterv1alpha1.ClusterV1alpha1Interface
 	ConfigV1alpha1() configv1alpha1.ConfigV1alpha1Interface
+	NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface
 	PolicyV1alpha1() policyv1alpha1.PolicyV1alpha1Interface
+	SearchV1alpha1() searchv1alpha1.SearchV1alpha1Interface
 	WorkV1alpha1() workv1alpha1.WorkV1alpha1Interface
 	WorkV1alpha2() workv1alpha2.WorkV1alpha2Interface
 }
 
-// Clientset contains the clients for groups. Each group has exactly one
-// version included in a Clientset.
+// Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	clusterV1alpha1 *clusterv1alpha1.ClusterV1alpha1Client
-	configV1alpha1  *configv1alpha1.ConfigV1alpha1Client
-	policyV1alpha1  *policyv1alpha1.PolicyV1alpha1Client
-	workV1alpha1    *workv1alpha1.WorkV1alpha1Client
-	workV1alpha2    *workv1alpha2.WorkV1alpha2Client
+	clusterV1alpha1    *clusterv1alpha1.ClusterV1alpha1Client
+	configV1alpha1     *configv1alpha1.ConfigV1alpha1Client
+	networkingV1alpha1 *networkingv1alpha1.NetworkingV1alpha1Client
+	policyV1alpha1     *policyv1alpha1.PolicyV1alpha1Client
+	searchV1alpha1     *searchv1alpha1.SearchV1alpha1Client
+	workV1alpha1       *workv1alpha1.WorkV1alpha1Client
+	workV1alpha2       *workv1alpha2.WorkV1alpha2Client
 }
 
 // ClusterV1alpha1 retrieves the ClusterV1alpha1Client
@@ -45,9 +51,19 @@ func (c *Clientset) ConfigV1alpha1() configv1alpha1.ConfigV1alpha1Interface {
 	return c.configV1alpha1
 }
 
+// NetworkingV1alpha1 retrieves the NetworkingV1alpha1Client
+func (c *Clientset) NetworkingV1alpha1() networkingv1alpha1.NetworkingV1alpha1Interface {
+	return c.networkingV1alpha1
+}
+
 // PolicyV1alpha1 retrieves the PolicyV1alpha1Client
 func (c *Clientset) PolicyV1alpha1() policyv1alpha1.PolicyV1alpha1Interface {
 	return c.policyV1alpha1
+}
+
+// SearchV1alpha1 retrieves the SearchV1alpha1Client
+func (c *Clientset) SearchV1alpha1() searchv1alpha1.SearchV1alpha1Interface {
+	return c.searchV1alpha1
 }
 
 // WorkV1alpha1 retrieves the WorkV1alpha1Client
@@ -71,7 +87,29 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 // NewForConfig creates a new Clientset for the given config.
 // If config's RateLimiter is not set and QPS and Burst are acceptable,
 // NewForConfig will generate a rate-limiter in configShallowCopy.
+// NewForConfig is equivalent to NewForConfigAndClient(c, httpClient),
+// where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*Clientset, error) {
+	configShallowCopy := *c
+
+	if configShallowCopy.UserAgent == "" {
+		configShallowCopy.UserAgent = rest.DefaultKubernetesUserAgent()
+	}
+
+	// share the transport between all clients
+	httpClient, err := rest.HTTPClientFor(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewForConfigAndClient(&configShallowCopy, httpClient)
+}
+
+// NewForConfigAndClient creates a new Clientset for the given config and http client.
+// Note the http client provided takes precedence over the configured transport values.
+// If config's RateLimiter is not set and QPS and Burst are acceptable,
+// NewForConfigAndClient will generate a rate-limiter in configShallowCopy.
+func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset, error) {
 	configShallowCopy := *c
 	if configShallowCopy.RateLimiter == nil && configShallowCopy.QPS > 0 {
 		if configShallowCopy.Burst <= 0 {
@@ -79,30 +117,39 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 		}
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}
+
 	var cs Clientset
 	var err error
-	cs.clusterV1alpha1, err = clusterv1alpha1.NewForConfig(&configShallowCopy)
+	cs.clusterV1alpha1, err = clusterv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.configV1alpha1, err = configv1alpha1.NewForConfig(&configShallowCopy)
+	cs.configV1alpha1, err = configv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.policyV1alpha1, err = policyv1alpha1.NewForConfig(&configShallowCopy)
+	cs.networkingV1alpha1, err = networkingv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.workV1alpha1, err = workv1alpha1.NewForConfig(&configShallowCopy)
+	cs.policyV1alpha1, err = policyv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
-	cs.workV1alpha2, err = workv1alpha2.NewForConfig(&configShallowCopy)
+	cs.searchV1alpha1, err = searchv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	cs.workV1alpha1, err = workv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	cs.workV1alpha2, err = workv1alpha2.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
 
-	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfig(&configShallowCopy)
+	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -112,15 +159,11 @@ func NewForConfig(c *rest.Config) (*Clientset, error) {
 // NewForConfigOrDie creates a new Clientset for the given config and
 // panics if there is an error in the config.
 func NewForConfigOrDie(c *rest.Config) *Clientset {
-	var cs Clientset
-	cs.clusterV1alpha1 = clusterv1alpha1.NewForConfigOrDie(c)
-	cs.configV1alpha1 = configv1alpha1.NewForConfigOrDie(c)
-	cs.policyV1alpha1 = policyv1alpha1.NewForConfigOrDie(c)
-	cs.workV1alpha1 = workv1alpha1.NewForConfigOrDie(c)
-	cs.workV1alpha2 = workv1alpha2.NewForConfigOrDie(c)
-
-	cs.DiscoveryClient = discovery.NewDiscoveryClientForConfigOrDie(c)
-	return &cs
+	cs, err := NewForConfig(c)
+	if err != nil {
+		panic(err)
+	}
+	return cs
 }
 
 // New creates a new Clientset for the given RESTClient.
@@ -128,7 +171,9 @@ func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.clusterV1alpha1 = clusterv1alpha1.New(c)
 	cs.configV1alpha1 = configv1alpha1.New(c)
+	cs.networkingV1alpha1 = networkingv1alpha1.New(c)
 	cs.policyV1alpha1 = policyv1alpha1.New(c)
+	cs.searchV1alpha1 = searchv1alpha1.New(c)
 	cs.workV1alpha1 = workv1alpha1.New(c)
 	cs.workV1alpha2 = workv1alpha2.New(c)
 

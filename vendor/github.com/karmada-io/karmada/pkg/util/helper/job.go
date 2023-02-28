@@ -14,8 +14,9 @@ import (
 )
 
 // ParsingJobStatus generates new status of given 'AggregatedStatusItem'.
+//
 //nolint:gocyclo
-func ParsingJobStatus(obj *batchv1.Job, status []workv1alpha2.AggregatedStatusItem, clusters []workv1alpha2.TargetCluster) (*batchv1.JobStatus, error) {
+func ParsingJobStatus(obj *batchv1.Job, status []workv1alpha2.AggregatedStatusItem) (*batchv1.JobStatus, error) {
 	var jobFailed []string
 	var startTime, completionTime *metav1.Time
 	successfulJobs, completionJobs := 0, 0
@@ -36,7 +37,7 @@ func ParsingJobStatus(obj *batchv1.Job, status []workv1alpha2.AggregatedStatusIt
 		newStatus.Succeeded += temp.Succeeded
 		newStatus.Failed += temp.Failed
 
-		isFinished, finishedStatus := getJobFinishedStatus(temp)
+		isFinished, finishedStatus := GetJobFinishedStatus(temp)
 		if isFinished && finishedStatus == batchv1.JobComplete {
 			successfulJobs++
 		} else if isFinished && finishedStatus == batchv1.JobFailed {
@@ -67,7 +68,9 @@ func ParsingJobStatus(obj *batchv1.Job, status []workv1alpha2.AggregatedStatusIt
 		})
 	}
 
-	if successfulJobs == len(clusters) {
+	// aggregated status can be empty when the binding is just created
+	// in which case we should not set the job status to complete
+	if successfulJobs == len(status) && successfulJobs > 0 {
 		newStatus.Conditions = append(newStatus.Conditions, batchv1.JobCondition{
 			Type:               batchv1.JobComplete,
 			Status:             corev1.ConditionTrue,
@@ -81,16 +84,16 @@ func ParsingJobStatus(obj *batchv1.Job, status []workv1alpha2.AggregatedStatusIt
 	if startTime != nil {
 		newStatus.StartTime = startTime.DeepCopy()
 	}
-	if completionTime != nil && completionJobs == len(clusters) {
+	if completionTime != nil && completionJobs == len(status) {
 		newStatus.CompletionTime = completionTime.DeepCopy()
 	}
 
 	return newStatus, nil
 }
 
-// getJobFinishedStatus checks whether the given Job has finished execution.
+// GetJobFinishedStatus checks whether the given Job has finished execution.
 // It does not discriminate between successful and failed terminations.
-func getJobFinishedStatus(jobStatus *batchv1.JobStatus) (bool, batchv1.JobConditionType) {
+func GetJobFinishedStatus(jobStatus *batchv1.JobStatus) (bool, batchv1.JobConditionType) {
 	for _, c := range jobStatus.Conditions {
 		if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed) && c.Status == corev1.ConditionTrue {
 			return true, c.Type

@@ -69,7 +69,7 @@ func NewSchema() *runtime.Scheme {
 func Run(ctx context.Context, opts *options.Options) error {
 	config, err := ctrl.GetConfig()
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	hookManager, err := ctrl.NewManager(config, ctrl.Options{

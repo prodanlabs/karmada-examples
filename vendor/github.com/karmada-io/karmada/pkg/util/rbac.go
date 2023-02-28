@@ -7,6 +7,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeclient "k8s.io/client-go/kubernetes"
+	stringslices "k8s.io/utils/strings/slices"
 )
 
 // IsClusterRoleExist tells if specific ClusterRole already exists.
@@ -84,8 +85,8 @@ func DeleteClusterRoleBinding(client kubeclient.Interface, name string) error {
 }
 
 // PolicyRuleAPIGroupMatches determines if the given policy rule is applied for requested group.
-func PolicyRuleAPIGroupMatches(rules *rbacv1.PolicyRule, requestedGroup string) bool {
-	for _, ruleGroup := range rules.APIGroups {
+func PolicyRuleAPIGroupMatches(rule *rbacv1.PolicyRule, requestedGroup string) bool {
+	for _, ruleGroup := range rule.APIGroups {
 		if ruleGroup == rbacv1.APIGroupAll {
 			return true
 		}
@@ -98,8 +99,8 @@ func PolicyRuleAPIGroupMatches(rules *rbacv1.PolicyRule, requestedGroup string) 
 }
 
 // PolicyRuleResourceMatches determines if the given policy rule is applied for requested resource.
-func PolicyRuleResourceMatches(rules *rbacv1.PolicyRule, requestedResource string) bool {
-	for _, ruleResource := range rules.Resources {
+func PolicyRuleResourceMatches(rule *rbacv1.PolicyRule, requestedResource string) bool {
+	for _, ruleResource := range rule.Resources {
 		if ruleResource == rbacv1.ResourceAll {
 			return true
 		}
@@ -117,8 +118,8 @@ func PolicyRuleResourceNameMatches(rule *rbacv1.PolicyRule, requestedName string
 		return true
 	}
 
-	for _, ruleName := range rule.ResourceNames {
-		if ruleName == requestedName {
+	for _, resourceName := range rule.ResourceNames {
+		if resourceName == requestedName {
 			return true
 		}
 	}
@@ -136,11 +137,17 @@ func GenerateImpersonationRules(allSubjects []rbacv1.Subject) []rbacv1.PolicyRul
 	for _, subject := range allSubjects {
 		switch subject.Kind {
 		case rbacv1.UserKind:
-			users = append(users, subject.Name)
+			if !stringslices.Contains(users, subject.Name) {
+				users = append(users, subject.Name)
+			}
 		case rbacv1.ServiceAccountKind:
-			serviceAccounts = append(serviceAccounts, subject.Name)
+			if !stringslices.Contains(serviceAccounts, subject.Name) {
+				serviceAccounts = append(serviceAccounts, subject.Name)
+			}
 		case rbacv1.GroupKind:
-			groups = append(groups, subject.Name)
+			if !stringslices.Contains(groups, subject.Name) {
+				groups = append(groups, subject.Name)
+			}
 		}
 	}
 

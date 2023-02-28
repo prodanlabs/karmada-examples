@@ -10,7 +10,7 @@ import (
 	kubeclient "k8s.io/client-go/kubernetes"
 )
 
-// IsNamespaceExist tells if specific already exists.
+// IsNamespaceExist tells if the namespace already exists.
 func IsNamespaceExist(client kubeclient.Interface, namespace string) (bool, error) {
 	_, err := client.CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
 	if err != nil {
@@ -51,12 +51,14 @@ func DeleteNamespace(client kubeclient.Interface, namespace string) error {
 // If namespace not exit, just create it.
 func EnsureNamespaceExist(client kubeclient.Interface, namespace string, dryRun bool) (*corev1.Namespace, error) {
 	namespaceObj := &corev1.Namespace{}
-	namespaceObj.ObjectMeta.Name = namespace
+	namespaceObj.Name = namespace
 
 	if dryRun {
 		return namespaceObj, nil
 	}
 
+	// It's necessary to check if a namespace exists before creating it.
+	// Sometimes the namespace is created in advance, to give less privilege to Karmada.
 	exist, err := IsNamespaceExist(client, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if namespace exist. namespace: %s, error: %v", namespace, err)

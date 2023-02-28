@@ -5,9 +5,21 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+const (
+	// ResourceKindWork is kind name of Work.
+	ResourceKindWork = "Work"
+	// ResourceSingularWork is singular name of Work.
+	ResourceSingularWork = "work"
+	// ResourcePluralWork is plural name of Work.
+	ResourcePluralWork = "works"
+	// ResourceNamespaceScopedWork indicates if Work is NamespaceScoped.
+	ResourceNamespaceScopedWork = true
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:categories={karmada-io}
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Applied")].status`,name="Applied",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
@@ -70,6 +82,12 @@ type ManifestStatus struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Status *runtime.RawExtension `json:"status,omitempty"`
+
+	// Health represents the healthy state of the current resource.
+	// There maybe different rules for different resources to achieve health status.
+	// +kubebuilder:validation:Enum=Healthy;Unhealthy;Unknown
+	// +optional
+	Health ResourceHealth `json:"health,omitempty"`
 }
 
 // ResourceIdentifier provides the identifiers needed to interact with any arbitrary object.
@@ -111,6 +129,21 @@ const (
 	// WorkDegraded represents that the current state of Work does not match
 	// the desired state for a certain period.
 	WorkDegraded string = "Degraded"
+)
+
+// ResourceHealth represents that the health status of the reference resource.
+type ResourceHealth string
+
+const (
+	// ResourceHealthy represents that the health status of the current resource
+	// that applied on the managed cluster is healthy.
+	ResourceHealthy ResourceHealth = "Healthy"
+	// ResourceUnhealthy represents that the health status of the current resource
+	// that applied on the managed cluster is unhealthy.
+	ResourceUnhealthy ResourceHealth = "Unhealthy"
+	// ResourceUnknown represents that the health status of the current resource
+	// that applied on the managed cluster is unknown.
+	ResourceUnknown ResourceHealth = "Unknown"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

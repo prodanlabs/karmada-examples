@@ -5,9 +5,29 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// ResourceKindOverridePolicy is kind name of OverridePolicy.
+	ResourceKindOverridePolicy = "OverridePolicy"
+	// ResourceSingularOverridePolicy is singular name of OverridePolicy.
+	ResourceSingularOverridePolicy = "overridepolicy"
+	// ResourcePluralOverridePolicy is plural name of OverridePolicy.
+	ResourcePluralOverridePolicy = "overridepolicies"
+	// ResourceNamespaceScopedOverridePolicy indicates if OverridePolicy is NamespaceScoped.
+	ResourceNamespaceScopedOverridePolicy = true
+
+	// ResourceKindClusterOverridePolicy is kind name of ClusterOverridePolicy.
+	ResourceKindClusterOverridePolicy = "ClusterOverridePolicy"
+	// ResourceSingularClusterOverridePolicy is singular name of ClusterOverridePolicy.
+	ResourceSingularClusterOverridePolicy = "clusteroverridepolicy"
+	// ResourcePluralClusterOverridePolicy is kind plural of ClusterOverridePolicy.
+	ResourcePluralClusterOverridePolicy = "clusteroverridepolicies"
+	// ResourceNamespaceScopedClusterOverridePolicy indicates if ClusterOverridePolicy is NamespaceScoped.
+	ResourceNamespaceScopedClusterOverridePolicy = false
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:shortName=op
+// +kubebuilder:resource:shortName=op,categories={karmada-io}
 
 // OverridePolicy represents the policy that overrides a group of resources to one or more clusters.
 type OverridePolicy struct {
@@ -32,10 +52,14 @@ type OverrideSpec struct {
 	// TargetCluster defines restrictions on this override policy
 	// that only applies to resources propagated to the matching clusters.
 	// nil means matching all clusters.
+	//
+	// Deprecated: This filed is deprecated in v1.0 and please use the OverrideRules instead.
 	// +optional
 	TargetCluster *ClusterAffinity `json:"targetCluster,omitempty"`
 
 	// Overriders represents the override rules that would apply on resources
+	//
+	// Deprecated: This filed is deprecated in v1.0 and please use the OverrideRules instead.
 	// +optional
 	Overriders Overriders `json:"overriders"`
 }
@@ -55,8 +79,12 @@ type RuleWithCluster struct {
 
 // Overriders offers various alternatives to represent the override rules.
 //
-// If more than one alternatives exist, they will be applied with following order:
+// If more than one alternative exists, they will be applied with following order:
 // - ImageOverrider
+// - CommandOverrider
+// - ArgsOverrider
+// - LabelsOverrider
+// - AnnotationsOverrider
 // - Plaintext
 type Overriders struct {
 	// Plaintext represents override rules defined with plaintext overriders.
@@ -74,6 +102,29 @@ type Overriders struct {
 	// ArgsOverrider represents the rules dedicated to handling container args
 	// +optional
 	ArgsOverrider []CommandArgsOverrider `json:"argsOverrider,omitempty"`
+
+	// LabelsOverrider represents the rules dedicated to handling workload labels
+	// +optional
+	LabelsOverrider []LabelAnnotationOverrider `json:"labelsOverrider,omitempty"`
+
+	// AnnotationsOverrider represents the rules dedicated to handling workload annotations
+	// +optional
+	AnnotationsOverrider []LabelAnnotationOverrider `json:"annotationsOverrider,omitempty"`
+}
+
+// LabelAnnotationOverrider represents the rules dedicated to handling workload labels/annotations
+type LabelAnnotationOverrider struct {
+	// Operator represents the operator which will apply on the workload.
+	// +kubebuilder:validation:Enum=add;remove;replace
+	// +required
+	Operator OverriderOperator `json:"operator"`
+
+	// Value to be applied to annotations/labels of workload.
+	// Items in Value which will be appended after annotations/labels when Operator is 'add'.
+	// Items in Value which match in annotations/labels will be deleted when Operator is 'remove'.
+	// Items in Value which match in annotations/labels will be replaced when Operator is 'replace'.
+	// +required
+	Value map[string]string `json:"value,omitempty"`
 }
 
 // ImageOverrider represents the rules dedicated to handling image overrides.
@@ -81,12 +132,14 @@ type ImageOverrider struct {
 	// Predicate filters images before applying the rule.
 	//
 	// Defaults to nil, in that case, the system will automatically detect image fields if the resource type is
-	// Pod, ReplicaSet, Deployment or StatefulSet by following rule:
+	// Pod, ReplicaSet, Deployment, StatefulSet, DaemonSet or Job by following rule:
 	//   - Pod: spec/containers/<N>/image
 	//   - ReplicaSet: spec/template/spec/containers/<N>/image
 	//   - Deployment: spec/template/spec/containers/<N>/image
+	//   - DaemonSet: spec/template/spec/containers/<N>/image
 	//   - StatefulSet: spec/template/spec/containers/<N>/image
-	// In addition, all images will be processed if the resource object has more than one containers.
+	//   - Job: spec/template/spec/containers/<N>/image
+	// In addition, all images will be processed if the resource object has more than one container.
 	//
 	// If not nil, only images matches the filters will be processed.
 	// +optional
@@ -95,7 +148,7 @@ type ImageOverrider struct {
 	// Component is part of image name.
 	// Basically we presume an image can be made of '[registry/]repository[:tag]'.
 	// The registry could be:
-	// - k8s.gcr.io
+	// - registry.k8s.io
 	// - fictional.registry.example:10443
 	// The repository could be:
 	// - kube-apiserver
@@ -167,7 +220,7 @@ type PlaintextOverrider struct {
 	// Path indicates the path of target field
 	Path string `json:"path"`
 	// Operator indicates the operation on target field.
-	// Available operators are: add, update and remove.
+	// Available operators are: add, replace and remove.
 	// +kubebuilder:validation:Enum=add;remove;replace
 	Operator OverriderOperator `json:"operator"`
 	// Value to be applied to target field.
@@ -199,7 +252,7 @@ type OverridePolicyList struct {
 
 // +genclient
 // +genclient:nonNamespaced
-// +kubebuilder:resource:scope="Cluster",shortName=cop
+// +kubebuilder:resource:scope="Cluster",shortName=cop,categories={karmada-io}
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ClusterOverridePolicy represents the cluster-wide policy that overrides a group of resources to one or more clusters.

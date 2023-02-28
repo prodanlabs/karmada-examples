@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"reflect"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -19,7 +22,52 @@ import (
 const (
 	// NamespaceClusterLease is the namespace which cluster lease are stored.
 	NamespaceClusterLease = "karmada-cluster"
+	// KubeCredentials is the secret that contains mandatory credentials whether reported when registering cluster
+	KubeCredentials = "KubeCredentials"
+	// KubeImpersonator is the secret that contains the token of impersonator whether reported when registering cluster
+	KubeImpersonator = "KubeImpersonator"
+	// None is means don't report any secrets.
+	None = "None"
 )
+
+// ClusterRegisterOption represents the option for RegistryCluster.
+type ClusterRegisterOption struct {
+	ClusterNamespace   string
+	ClusterName        string
+	ReportSecrets      []string
+	ClusterAPIEndpoint string
+	ProxyServerAddress string
+	ClusterProvider    string
+	ClusterRegion      string
+	ClusterZone        string
+	DryRun             bool
+
+	ControlPlaneConfig *rest.Config
+	ClusterConfig      *rest.Config
+	Secret             corev1.Secret
+	ImpersonatorSecret corev1.Secret
+	ClusterID          string
+}
+
+// IsKubeCredentialsEnabled represents whether report secret
+func (r ClusterRegisterOption) IsKubeCredentialsEnabled() bool {
+	for _, sct := range r.ReportSecrets {
+		if sct == KubeCredentials {
+			return true
+		}
+	}
+	return false
+}
+
+// IsKubeImpersonatorEnabled represents whether report impersonator secret
+func (r ClusterRegisterOption) IsKubeImpersonatorEnabled() bool {
+	for _, sct := range r.ReportSecrets {
+		if sct == KubeImpersonator {
+			return true
+		}
+	}
+	return false
+}
 
 // IsClusterReady tells whether the cluster status in 'Ready' condition.
 func IsClusterReady(clusterStatus *clusterv1alpha1.ClusterStatus) bool {
@@ -36,7 +84,7 @@ func GetCluster(hostClient client.Client, clusterName string) (*clusterv1alpha1.
 }
 
 // CreateClusterObject create cluster object in karmada control plane
-func CreateClusterObject(controlPlaneClient *karmadaclientset.Clientset, clusterObj *clusterv1alpha1.Cluster) (*clusterv1alpha1.Cluster, error) {
+func CreateClusterObject(controlPlaneClient karmadaclientset.Interface, clusterObj *clusterv1alpha1.Cluster) (*clusterv1alpha1.Cluster, error) {
 	cluster, exist, err := GetClusterWithKarmadaClient(controlPlaneClient, clusterObj.Name)
 	if err != nil {
 		return nil, err
@@ -47,7 +95,7 @@ func CreateClusterObject(controlPlaneClient *karmadaclientset.Clientset, cluster
 	}
 
 	if cluster, err = createCluster(controlPlaneClient, clusterObj); err != nil {
-		klog.Warningf("failed to create cluster(%s). error: %v", clusterObj.Name, err)
+		klog.Warningf("Failed to create cluster(%s). error: %v", clusterObj.Name, err)
 		return nil, err
 	}
 
@@ -56,32 +104,31 @@ func CreateClusterObject(controlPlaneClient *karmadaclientset.Clientset, cluster
 
 // CreateOrUpdateClusterObject create cluster object in karmada control plane,
 // if cluster object has been existed and different from input clusterObj, update it.
-func CreateOrUpdateClusterObject(controlPlaneClient *karmadaclientset.Clientset, clusterObj *clusterv1alpha1.Cluster) (*clusterv1alpha1.Cluster, error) {
+func CreateOrUpdateClusterObject(controlPlaneClient karmadaclientset.Interface, clusterObj *clusterv1alpha1.Cluster, mutate func(*clusterv1alpha1.Cluster)) (*clusterv1alpha1.Cluster, error) {
 	cluster, exist, err := GetClusterWithKarmadaClient(controlPlaneClient, clusterObj.Name)
 	if err != nil {
 		return nil, err
 	}
-
 	if exist {
 		if reflect.DeepEqual(cluster.Spec, clusterObj.Spec) {
-			klog.Warningf("cluster(%s) already exist and newest", clusterObj.Name)
+			klog.Warningf("Cluster(%s) already exist and newest", clusterObj.Name)
 			return cluster, nil
 		}
-
-		cluster.Spec = clusterObj.Spec
+		mutate(cluster)
 		cluster, err = updateCluster(controlPlaneClient, cluster)
 		if err != nil {
-			klog.Warningf("failed to create cluster(%s). error: %v", clusterObj.Name, err)
+			klog.Warningf("Failed to create cluster(%s). error: %v", clusterObj.Name, err)
 			return nil, err
 		}
 		return cluster, nil
 	}
 
+	mutate(clusterObj)
+
 	if cluster, err = createCluster(controlPlaneClient, clusterObj); err != nil {
-		klog.Warningf("failed to create cluster(%s). error: %v", clusterObj.Name, err)
+		klog.Warningf("Failed to create cluster(%s). error: %v", clusterObj.Name, err)
 		return nil, err
 	}
-
 	return cluster, nil
 }
 
@@ -93,7 +140,7 @@ func GetClusterWithKarmadaClient(client karmadaclientset.Interface, name string)
 			return nil, false, nil
 		}
 
-		klog.Warningf("failed to retrieve cluster(%s). error: %v", cluster.Name, err)
+		klog.Warningf("Failed to retrieve cluster(%s). error: %v", name, err)
 		return nil, false, err
 	}
 
@@ -103,7 +150,7 @@ func GetClusterWithKarmadaClient(client karmadaclientset.Interface, name string)
 func createCluster(controlPlaneClient karmadaclientset.Interface, cluster *clusterv1alpha1.Cluster) (*clusterv1alpha1.Cluster, error) {
 	newCluster, err := controlPlaneClient.ClusterV1alpha1().Clusters().Create(context.TODO(), cluster, metav1.CreateOptions{})
 	if err != nil {
-		klog.Warningf("failed to create cluster(%s). error: %v", cluster.Name, err)
+		klog.Warningf("Failed to create cluster(%s). error: %v", cluster.Name, err)
 		return nil, err
 	}
 
@@ -113,9 +160,33 @@ func createCluster(controlPlaneClient karmadaclientset.Interface, cluster *clust
 func updateCluster(controlPlaneClient karmadaclientset.Interface, cluster *clusterv1alpha1.Cluster) (*clusterv1alpha1.Cluster, error) {
 	newCluster, err := controlPlaneClient.ClusterV1alpha1().Clusters().Update(context.TODO(), cluster, metav1.UpdateOptions{})
 	if err != nil {
-		klog.Warningf("failed to update cluster(%s). error: %v", cluster.Name, err)
+		klog.Warningf("Failed to update cluster(%s). error: %v", cluster.Name, err)
 		return nil, err
 	}
 
 	return newCluster, nil
+}
+
+// ObtainClusterID returns the cluster ID property with clusterKubeClient
+func ObtainClusterID(clusterKubeClient kubernetes.Interface) (string, error) {
+	ns, err := clusterKubeClient.CoreV1().Namespaces().Get(context.TODO(), metav1.NamespaceSystem, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	return string(ns.UID), nil
+}
+
+// IsClusterIdentifyUnique checks whether the ClusterID exists in the karmada control plane.
+func IsClusterIdentifyUnique(controlPlaneClient karmadaclientset.Interface, id string) (bool, string, error) {
+	clusterList, err := controlPlaneClient.ClusterV1alpha1().Clusters().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return false, "", err
+	}
+
+	for _, cluster := range clusterList.Items {
+		if cluster.Spec.ID == id {
+			return false, cluster.Name, nil
+		}
+	}
+	return true, "", nil
 }

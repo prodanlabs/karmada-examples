@@ -8,9 +8,9 @@ import (
 )
 
 // GetBindingClusterNames will get clusterName list from bind clusters field
-func GetBindingClusterNames(binding *workv1alpha2.ResourceBinding) []string {
+func GetBindingClusterNames(spec *workv1alpha2.ResourceBindingSpec) []string {
 	var clusterNames []string
-	for _, targetCluster := range binding.Spec.Clusters {
+	for _, targetCluster := range spec.Clusters {
 		clusterNames = append(clusterNames, targetCluster.Name)
 	}
 	return clusterNames
@@ -30,10 +30,7 @@ func IsBindingReplicasChanged(bindingSpec *workv1alpha2.ResourceBindingSpec, str
 		return false
 	}
 	if strategy.ReplicaSchedulingType == policyv1alpha1.ReplicaSchedulingTypeDivided {
-		replicasSum := int32(0)
-		for _, targetCluster := range bindingSpec.Clusters {
-			replicasSum += targetCluster.Replicas
-		}
+		replicasSum := GetSumOfReplicas(bindingSpec.Clusters)
 		return replicasSum != bindingSpec.Replicas
 	}
 	return false
@@ -49,8 +46,8 @@ func GetSumOfReplicas(clusters []workv1alpha2.TargetCluster) int32 {
 }
 
 // ConvertToClusterNames will convert a cluster slice to clusterName's sets.String
-func ConvertToClusterNames(clusters []workv1alpha2.TargetCluster) sets.String {
-	clusterNames := sets.NewString()
+func ConvertToClusterNames(clusters []workv1alpha2.TargetCluster) sets.Set[string] {
+	clusterNames := sets.New[string]()
 	for _, cluster := range clusters {
 		clusterNames.Insert(cluster.Name)
 	}
@@ -58,38 +55,14 @@ func ConvertToClusterNames(clusters []workv1alpha2.TargetCluster) sets.String {
 	return clusterNames
 }
 
-// DivideReplicasByTargetCluster will divide the sum number by the weight of target clusters.
-func DivideReplicasByTargetCluster(clusters []workv1alpha2.TargetCluster, sum int32) []workv1alpha2.TargetCluster {
-	res := make([]workv1alpha2.TargetCluster, len(clusters))
-	if len(clusters) == 0 {
-		return res
-	}
-	sumWeight := int32(0)
-	allocatedReplicas := int32(0)
-	for i := range clusters {
-		sumWeight += clusters[i].Replicas
-	}
-	for i := range clusters {
-		res[i].Name = clusters[i].Name
-		if sumWeight > 0 {
-			res[i].Replicas = clusters[i].Replicas * sum / sumWeight
-		}
-		allocatedReplicas += res[i].Replicas
-	}
-	if remainReplicas := sum - allocatedReplicas; remainReplicas > 0 {
-		for i := 0; remainReplicas > 0; i++ {
-			if i == len(res) {
-				i = 0
-			}
-			res[i].Replicas++
-			remainReplicas--
-		}
-	}
-	return res
-}
-
 // MergeTargetClusters will merge the replicas in two TargetCluster
 func MergeTargetClusters(old, new []workv1alpha2.TargetCluster) []workv1alpha2.TargetCluster {
+	switch {
+	case len(old) == 0:
+		return new
+	case len(new) == 0:
+		return old
+	}
 	// oldMap is a map of the result for the old replicas so that it can be merged with the new result easily
 	oldMap := make(map[string]int32)
 	for _, cluster := range old {

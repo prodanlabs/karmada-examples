@@ -5,9 +5,29 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// ResourceKindPropagationPolicy is kind name of PropagationPolicy.
+	ResourceKindPropagationPolicy = "PropagationPolicy"
+	// ResourceSingularPropagationPolicy is singular name of PropagationPolicy.
+	ResourceSingularPropagationPolicy = "propagationpolicy"
+	// ResourcePluralPropagationPolicy is kind plural name of PropagationPolicy.
+	ResourcePluralPropagationPolicy = "propagationpolicies"
+	// ResourceNamespaceScopedPropagationPolicy indicates if PropagationPolicy is NamespaceScoped.
+	ResourceNamespaceScopedPropagationPolicy = true
+
+	// ResourceKindClusterPropagationPolicy is kind name of ClusterPropagationPolicy.
+	ResourceKindClusterPropagationPolicy = "ClusterPropagationPolicy"
+	// ResourceSingularClusterPropagationPolicy is singular name of ClusterPropagationPolicy.
+	ResourceSingularClusterPropagationPolicy = "clusterpropagationpolicy"
+	// ResourcePluralClusterPropagationPolicy is plural name of ClusterPropagationPolicy.
+	ResourcePluralClusterPropagationPolicy = "clusterpropagationpolicies"
+	// ResourceNamespaceScopedClusterPropagationPolicy indicates if ClusterPropagationPolicy is NamespaceScoped.
+	ResourceNamespaceScopedClusterPropagationPolicy = false
+)
+
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:shortName=pp
+// +kubebuilder:resource:shortName=pp,categories={karmada-io}
 
 // PropagationPolicy represents the policy that propagates a group of resources to one or more clusters.
 type PropagationPolicy struct {
@@ -22,7 +42,11 @@ type PropagationPolicy struct {
 // PropagationSpec represents the desired behavior of PropagationPolicy.
 type PropagationSpec struct {
 	// ResourceSelectors used to select resources.
+	// Nil or empty selector is not allowed and doesn't mean match all kinds
+	// of resources for security concerns that sensitive resources(like Secret)
+	// might be accidentally propagated.
 	// +required
+	// +kubebuilder:validation:MinItems=1
 	ResourceSelectors []ResourceSelector `json:"resourceSelectors"`
 
 	// Association tells if relevant resources should be selected automatically.
@@ -46,6 +70,27 @@ type PropagationSpec struct {
 	// +optional
 	Placement Placement `json:"placement,omitempty"`
 
+	// Priority indicates the importance of a policy(PropagationPolicy or ClusterPropagationPolicy).
+	// A policy will be applied for the matched resource templates if there is
+	// no other policies with higher priority at the point of the resource
+	// template be processed.
+	// Once a resource template has been claimed by a policy, by default it will
+	// not be preempted by following policies even with a higher priority.
+	//
+	// In case of two policies have the same priority, the one with a more precise
+	// matching rules in ResourceSelectors wins:
+	// - matching by name(resourceSelector.name) has higher priority than
+	//   by selector(resourceSelector.labelSelector)
+	// - matching by selector(resourceSelector.labelSelector) has higher priority
+	//   than by APIVersion(resourceSelector.apiVersion) and Kind(resourceSelector.kind).
+	// If there is still no winner at this point, the one with the lower alphabetic
+	// order wins, e.g. policy 'bar' has higher priority than 'foo'.
+	//
+	// The higher the value, the higher the priority. Defaults to zero.
+	// +optional
+	// +kubebuilder:default=0
+	Priority *int32 `json:"priority,omitempty"`
+
 	// DependentOverrides represents the list of overrides(OverridePolicy)
 	// which must present before the current PropagationPolicy takes effect.
 	//
@@ -61,6 +106,7 @@ type PropagationSpec struct {
 	// SchedulerName represents which scheduler to proceed the scheduling.
 	// If specified, the policy will be dispatched by specified scheduler.
 	// If not specified, the policy will be dispatched by default scheduler.
+	// +kubebuilder:default="default-scheduler"
 	// +optional
 	SchedulerName string `json:"schedulerName,omitempty"`
 }
@@ -100,9 +146,45 @@ type FieldSelector struct {
 // Placement represents the rule for select clusters.
 type Placement struct {
 	// ClusterAffinity represents scheduling restrictions to a certain set of clusters.
-	// If not set, any cluster can be scheduling candidate.
+	// Note:
+	//   1. ClusterAffinity can not co-exist with ClusterAffinities.
+	//   2. If both ClusterAffinity and ClusterAffinities are not set, any cluster
+	//      can be scheduling candidates.
 	// +optional
 	ClusterAffinity *ClusterAffinity `json:"clusterAffinity,omitempty"`
+
+	// ClusterAffinities represents scheduling restrictions to multiple cluster
+	// groups that indicated by ClusterAffinityTerm.
+	//
+	// The scheduler will evaluate these groups one by one in the order they
+	// appear in the spec, the group that does not satisfy scheduling restrictions
+	// will be ignored which means all clusters in this group will not be selected
+	// unless it also belongs to the next group(a cluster could belong to multiple
+	// groups).
+	//
+	// If none of the groups satisfy the scheduling restrictions, then scheduling
+	// fails, which means no cluster will be selected.
+	//
+	// Note:
+	//   1. ClusterAffinities can not co-exist with ClusterAffinity.
+	//   2. If both ClusterAffinity and ClusterAffinities are not set, any cluster
+	//      can be scheduling candidates.
+	//
+	// Potential use case 1:
+	// The private clusters in the local data center could be the main group, and
+	// the managed clusters provided by cluster providers could be the secondary
+	// group. So that the Karmada scheduler would prefer to schedule workloads
+	// to the main group and the second group will only be considered in case of
+	// the main group does not satisfy restrictions(like, lack of resources).
+	//
+	// Potential use case 2:
+	// For the disaster recovery scenario, the clusters could be organized to
+	// primary and backup groups, the workloads would be scheduled to primary
+	// clusters firstly, and when primary cluster fails(like data center power off),
+	// Karmada scheduler could migrate workloads to the backup clusters.
+	//
+	// +optional
+	ClusterAffinities []ClusterAffinityTerm `json:"clusterAffinities,omitempty"`
 
 	// ClusterTolerations represents the tolerations.
 	// +optional
@@ -179,6 +261,15 @@ type ClusterAffinity struct {
 	ExcludeClusters []string `json:"exclude,omitempty"`
 }
 
+// ClusterAffinityTerm selects a set of cluster.
+type ClusterAffinityTerm struct {
+	// AffinityName is the name of the cluster group.
+	// +required
+	AffinityName string `json:"affinityName"`
+
+	ClusterAffinity `json:",inline"`
+}
+
 // ReplicaSchedulingType describes scheduling methods for the "replicas" in a resource.
 type ReplicaSchedulingType string
 
@@ -210,6 +301,7 @@ type ReplicaSchedulingStrategy struct {
 	// "Divided" divides replicas into parts according to number of valid candidate member
 	// clusters, and exact replicas for each cluster are determined by ReplicaDivisionPreference.
 	// +kubebuilder:validation:Enum=Duplicated;Divided
+	// +kubebuilder:default=Divided
 	// +optional
 	ReplicaSchedulingType ReplicaSchedulingType `json:"replicaSchedulingType,omitempty"`
 
@@ -282,7 +374,7 @@ type PropagationPolicyList struct {
 
 // +genclient
 // +genclient:nonNamespaced
-// +kubebuilder:resource:scope="Cluster",shortName=cpp
+// +kubebuilder:resource:scope="Cluster",shortName=cpp,categories={karmada-io}
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ClusterPropagationPolicy represents the cluster-wide policy that propagates a group of resources to one or more clusters.

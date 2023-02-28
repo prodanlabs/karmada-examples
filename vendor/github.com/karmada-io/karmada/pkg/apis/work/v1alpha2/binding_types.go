@@ -5,12 +5,34 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+
+	policyv1alpha1 "github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1"
+)
+
+const (
+	// ResourceKindResourceBinding is kind name of ResourceBinding.
+	ResourceKindResourceBinding = "ResourceBinding"
+	// ResourceSingularResourceBinding is singular name of ResourceBinding.
+	ResourceSingularResourceBinding = "resourcebinding"
+	// ResourcePluralResourceBinding is plural name of ResourceBinding.
+	ResourcePluralResourceBinding = "resourcebindings"
+	// ResourceNamespaceScopedResourceBinding indicates if ResourceBinding is NamespaceScoped.
+	ResourceNamespaceScopedResourceBinding = true
+
+	// ResourceKindClusterResourceBinding is kind name of ClusterResourceBinding.
+	ResourceKindClusterResourceBinding = "ClusterResourceBinding"
+	// ResourceSingularClusterResourceBinding is singular name of ClusterResourceBinding.
+	ResourceSingularClusterResourceBinding = "clusterresourcebinding"
+	// ResourcePluralClusterResourceBinding is kind plural of ClusterResourceBinding.
+	ResourcePluralClusterResourceBinding = "clusterresourcebindings"
+	// ResourceNamespaceScopedClusterResourceBinding indicates if ClusterResourceBinding is NamespaceScoped.
+	ResourceNamespaceScopedClusterResourceBinding = false
 )
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:shortName=rb
+// +kubebuilder:resource:shortName=rb,categories={karmada-io}
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Scheduled")].status`,name="Scheduled",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="FullyApplied")].status`,name="FullyApplied",type=string
@@ -52,9 +74,34 @@ type ResourceBindingSpec struct {
 	// +optional
 	Clusters []TargetCluster `json:"clusters,omitempty"`
 
+	// Placement represents the rule for select clusters to propagate resources.
+	// +optional
+	Placement *policyv1alpha1.Placement `json:"placement,omitempty"`
+
+	// GracefulEvictionTasks holds the eviction tasks that are expected to perform
+	// the eviction in a graceful way.
+	// The intended workflow is:
+	// 1. Once the controller(such as 'taint-manager') decided to evict the resource that
+	//    is referenced by current ResourceBinding or ClusterResourceBinding from a target
+	//    cluster, it removes(or scale down the replicas) the target from Clusters(.spec.Clusters)
+	//    and builds a graceful eviction task.
+	// 2. The scheduler may perform a re-scheduler and probably select a substitute cluster
+	//    to take over the evicting workload(resource).
+	// 3. The graceful eviction controller takes care of the graceful eviction tasks and
+	//    performs the final removal after the workload(resource) is available on the substitute
+	//    cluster or exceed the grace termination period(defaults to 10 minutes).
+	//
+	// +optional
+	GracefulEvictionTasks []GracefulEvictionTask `json:"gracefulEvictionTasks,omitempty"`
+
 	// RequiredBy represents the list of Bindings that depend on the referencing resource.
 	// +optional
 	RequiredBy []BindingSnapshot `json:"requiredBy,omitempty"`
+
+	// SchedulerName represents which scheduler to proceed the scheduling.
+	// It inherits directly from the associated PropagationPolicy(or ClusterPropagationPolicy).
+	// +optional
+	SchedulerName string `json:"schedulerName,omitempty"`
 }
 
 // ObjectReference contains enough information to locate the referenced object inside current cluster.
@@ -122,6 +169,48 @@ type TargetCluster struct {
 	Replicas int32 `json:"replicas,omitempty"`
 }
 
+// GracefulEvictionTask represents a graceful eviction task.
+type GracefulEvictionTask struct {
+	// FromCluster which cluster the eviction perform from.
+	// +required
+	FromCluster string `json:"fromCluster"`
+
+	// Replicas indicates the number of replicas should be evicted.
+	// Should be ignored for resource type that doesn't have replica.
+	// +optional
+	Replicas *int32 `json:"replicas,omitempty"`
+
+	// Reason contains a programmatic identifier indicating the reason for the eviction.
+	// Producers may define expected values and meanings for this field,
+	// and whether the values are considered a guaranteed API.
+	// The value should be a CamelCase string.
+	// This field may not be empty.
+	// +required
+	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$`
+	Reason string `json:"reason"`
+
+	// Message is a human-readable message indicating details about the eviction.
+	// This may be an empty string.
+	// +optional
+	// +kubebuilder:validation:MaxLength=1024
+	Message string `json:"message,omitempty"`
+
+	// Producer indicates the controller who triggered the eviction.
+	// +required
+	Producer string `json:"producer"`
+
+	// CreationTimestamp is a timestamp representing the server time when this object was
+	// created.
+	// Clients should not set this value to avoid the time inconsistency issue.
+	// It is represented in RFC3339 form(like '2021-04-25T10:02:10Z') and is in UTC.
+	//
+	// Populated by the system. Read-only.
+	// +optional
+	CreationTimestamp metav1.Time `json:"creationTimestamp,omitempty"`
+}
+
 // BindingSnapshot is a snapshot of a ResourceBinding or ClusterResourceBinding.
 type BindingSnapshot struct {
 	// Namespace represents the namespace of the Binding.
@@ -141,9 +230,21 @@ type BindingSnapshot struct {
 
 // ResourceBindingStatus represents the overall status of the strategy as well as the referenced resources.
 type ResourceBindingStatus struct {
+	// SchedulerObservedGeneration is the generation(.metadata.generation) observed by the scheduler.
+	// If SchedulerObservedGeneration is less than the generation in metadata means the scheduler hasn't confirmed
+	// the scheduling result or hasn't done the schedule yet.
+	// +optional
+	SchedulerObservedGeneration int64 `json:"schedulerObservedGeneration,omitempty"`
+
+	// SchedulerObservedAffinityName is the name of affinity term that is
+	// the basis of current scheduling.
+	// +optional
+	SchedulerObservedAffinityName string `json:"schedulerObservingAffinityName,omitempty"`
+
 	// Conditions contain the different condition statuses.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// AggregatedStatus represents status list of the resource running in each member cluster.
 	// +optional
 	AggregatedStatus []AggregatedStatusItem `json:"aggregatedStatus,omitempty"`
@@ -168,6 +269,12 @@ type AggregatedStatusItem struct {
 	// This is usually holds the error message in case of apply failed.
 	// +optional
 	AppliedMessage string `json:"appliedMessage,omitempty"`
+
+	// Health represents the healthy state of the current resource.
+	// There maybe different rules for different resources to achieve health status.
+	// +kubebuilder:validation:Enum=Healthy;Unhealthy;Unknown
+	// +optional
+	Health ResourceHealth `json:"health,omitempty"`
 }
 
 // Conditions definition
@@ -191,10 +298,25 @@ type ResourceBindingList struct {
 	Items []ResourceBinding `json:"items"`
 }
 
+// ResourceHealth represents that the health status of the reference resource.
+type ResourceHealth string
+
+const (
+	// ResourceHealthy represents that the health status of the current resource
+	// that applied on the managed cluster is healthy.
+	ResourceHealthy ResourceHealth = "Healthy"
+	// ResourceUnhealthy represents that the health status of the current resource
+	// that applied on the managed cluster is unhealthy.
+	ResourceUnhealthy ResourceHealth = "Unhealthy"
+	// ResourceUnknown represents that the health status of the current resource
+	// that applied on the managed cluster is unknown.
+	ResourceUnknown ResourceHealth = "Unknown"
+)
+
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +kubebuilder:resource:scope="Cluster",shortName=crb
+// +kubebuilder:resource:scope="Cluster",shortName=crb,categories={karmada-io}
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Scheduled")].status`,name="Scheduled",type=string

@@ -1,24 +1,42 @@
 package util
 
 import (
-	"fmt"
-
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 
 	clusterv1alpha1 "github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1"
 	policyv1alpha1 "github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1"
+	"github.com/karmada-io/karmada/pkg/util/lifted"
+)
+
+// ImplicitPriority describes the extent to which a ResourceSelector or a set of
+// ResourceSelectors match resources.
+type ImplicitPriority int
+
+const (
+	// PriorityMisMatch means the ResourceSelector does not match the resource.
+	PriorityMisMatch ImplicitPriority = iota
+	// PriorityMatchAll means the ResourceSelector whose Name and LabelSelector is empty
+	// matches the resource.
+	PriorityMatchAll
+	// PriorityMatchLabelSelector means the LabelSelector of ResourceSelector matches the resource.
+	PriorityMatchLabelSelector
+	// PriorityMatchName means the Name of ResourceSelector matches the resource.
+	PriorityMatchName
 )
 
 // ResourceMatches tells if the specific resource matches the selector.
 func ResourceMatches(resource *unstructured.Unstructured, rs policyv1alpha1.ResourceSelector) bool {
+	return ResourceSelectorPriority(resource, rs) > PriorityMisMatch
+}
+
+// ResourceSelectorPriority tells the priority between the specific resource and the selector.
+func ResourceSelectorPriority(resource *unstructured.Unstructured, rs policyv1alpha1.ResourceSelector) ImplicitPriority {
 	if resource.GetAPIVersion() != rs.APIVersion ||
 		resource.GetKind() != rs.Kind ||
 		(len(rs.Namespace) > 0 && resource.GetNamespace() != rs.Namespace) {
-		return false
+		return PriorityMisMatch
 	}
 
 	// match rules:
@@ -30,12 +48,15 @@ func ResourceMatches(resource *unstructured.Unstructured, rs policyv1alpha1.Reso
 
 	// case 1, 2: name not empty, don't need to consult selector.
 	if len(rs.Name) > 0 {
-		return rs.Name == resource.GetName()
+		if rs.Name == resource.GetName() {
+			return PriorityMatchName
+		}
+		return PriorityMisMatch
 	}
 
 	// case 4: short path, both name and selector empty, matches all
 	if rs.LabelSelector == nil {
-		return true
+		return PriorityMatchAll
 	}
 
 	// case 3: matches with selector
@@ -43,10 +64,13 @@ func ResourceMatches(resource *unstructured.Unstructured, rs policyv1alpha1.Reso
 	var err error
 	if s, err = metav1.LabelSelectorAsSelector(rs.LabelSelector); err != nil {
 		// should not happen because all resource selector should be fully validated by webhook.
-		return false
+		return PriorityMisMatch
 	}
 
-	return s.Matches(labels.Set(resource.GetLabels()))
+	if s.Matches(labels.Set(resource.GetLabels())) {
+		return PriorityMatchLabelSelector
+	}
+	return PriorityMisMatch
 }
 
 // ClusterMatches tells if specific cluster matches the affinity.
@@ -83,7 +107,7 @@ func ClusterMatches(cluster *clusterv1alpha1.Cluster, affinity policyv1alpha1.Cl
 	if affinity.FieldSelector != nil {
 		var matchFields labels.Selector
 		var err error
-		if matchFields, err = nodeSelectorRequirementsAsSelector(affinity.FieldSelector.MatchExpressions); err != nil {
+		if matchFields, err = lifted.NodeSelectorRequirementsAsSelector(affinity.FieldSelector.MatchExpressions); err != nil {
 			return false
 		}
 		clusterFields := extractClusterFields(cluster)
@@ -119,40 +143,15 @@ func ResourceMatchSelectors(resource *unstructured.Unstructured, selectors ...po
 	return false
 }
 
-// This code is directly lifted from the Kubernetes codebase.
-// For reference: https://github.com/kubernetes/kubernetes/blob/release-1.20/staging/src/k8s.io/component-helpers/scheduling/corev1/nodeaffinity/nodeaffinity.go#L193-L225
-// nodeSelectorRequirementsAsSelector converts the []NodeSelectorRequirement api type into a struct that implements
-// labels.Selector.
-func nodeSelectorRequirementsAsSelector(nsm []corev1.NodeSelectorRequirement) (labels.Selector, error) {
-	if len(nsm) == 0 {
-		return labels.Nothing(), nil
-	}
-	selector := labels.NewSelector()
-	for _, expr := range nsm {
-		var op selection.Operator
-		switch expr.Operator {
-		case corev1.NodeSelectorOpIn:
-			op = selection.In
-		case corev1.NodeSelectorOpNotIn:
-			op = selection.NotIn
-		case corev1.NodeSelectorOpExists:
-			op = selection.Exists
-		case corev1.NodeSelectorOpDoesNotExist:
-			op = selection.DoesNotExist
-		case corev1.NodeSelectorOpGt:
-			op = selection.GreaterThan
-		case corev1.NodeSelectorOpLt:
-			op = selection.LessThan
-		default:
-			return nil, fmt.Errorf("%q is not a valid node selector operator", expr.Operator)
+// ResourceMatchSelectorsPriority returns the highest priority between specific resource and the selectors.
+func ResourceMatchSelectorsPriority(resource *unstructured.Unstructured, selectors ...policyv1alpha1.ResourceSelector) ImplicitPriority {
+	var priority ImplicitPriority
+	for _, rs := range selectors {
+		if p := ResourceSelectorPriority(resource, rs); p > priority {
+			priority = p
 		}
-		r, err := labels.NewRequirement(expr.Key, op, expr.Values)
-		if err != nil {
-			return nil, err
-		}
-		selector = selector.Add(*r)
 	}
-	return selector, nil
+	return priority
 }
 
 func extractClusterFields(cluster *clusterv1alpha1.Cluster) labels.Set {

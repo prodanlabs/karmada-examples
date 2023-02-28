@@ -37,12 +37,8 @@ const derivedServicePrefix = "derived"
 const estimatorServicePrefix = "karmada-scheduler-estimator"
 
 // GenerateExecutionSpaceName generates execution space name for the given member cluster
-func GenerateExecutionSpaceName(clusterName string) (string, error) {
-	if clusterName == "" {
-		return "", fmt.Errorf("the member cluster name is empty")
-	}
-	executionSpace := ExecutionSpacePrefix + clusterName
-	return executionSpace, nil
+func GenerateExecutionSpaceName(clusterName string) string {
+	return ExecutionSpacePrefix + clusterName
 }
 
 // GetClusterName returns member cluster name for the given execution space
@@ -55,6 +51,17 @@ func GetClusterName(executionSpaceName string) (string, error) {
 
 // GenerateBindingName will generate binding name by kind and name
 func GenerateBindingName(kind, name string) string {
+	// The name of resources, like 'Role'/'ClusterRole'/'RoleBinding'/'ClusterRoleBinding',
+	// may contain symbols(like ':') that are not allowed by CRD resources which require the
+	// name can be used as a DNS subdomain name. So, we need to replace it.
+	// These resources may also allow for other characters(like '&','$') that are not allowed
+	// by CRD resources, we only handle the most common ones now for performance concerns.
+	// For more information about the DNS subdomain name, please refer to
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names.
+	if strings.Contains(name, ":") {
+		name = strings.ReplaceAll(name, ":", ".")
+	}
+
 	return strings.ToLower(name + "-" + kind)
 }
 
@@ -62,7 +69,7 @@ func GenerateBindingName(kind, name string) string {
 func GenerateBindingReferenceKey(namespace, name string) string {
 	var bindingName string
 	if len(namespace) > 0 {
-		bindingName = namespace + "-" + name
+		bindingName = namespace + "/" + name
 	} else {
 		bindingName = name
 	}
@@ -73,6 +80,18 @@ func GenerateBindingReferenceKey(namespace, name string) string {
 
 // GenerateWorkName will generate work name by its name and the hash of its namespace, kind and name.
 func GenerateWorkName(kind, name, namespace string) string {
+	// The name of resources, like 'Role'/'ClusterRole'/'RoleBinding'/'ClusterRoleBinding',
+	// may contain symbols(like ':' or uppercase upper case) that are not allowed by CRD resources which require the
+	// name can be used as a DNS subdomain name. So, we need to replace it.
+	// These resources may also allow for other characters(like '&','$') that are not allowed
+	// by CRD resources, we only handle the most common ones now for performance concerns.
+	// For more information about the DNS subdomain name, please refer to
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names.
+	if strings.Contains(name, ":") {
+		name = strings.ReplaceAll(name, ":", ".")
+	}
+	name = strings.ToLower(name)
+
 	var workName string
 	if len(namespace) == 0 {
 		workName = strings.ToLower(name + "-" + kind)
@@ -105,7 +124,12 @@ func GenerateDerivedServiceName(serviceName string) string {
 }
 
 // GenerateEstimatorServiceName generates the gRPC scheduler estimator service name which belongs to a cluster.
-func GenerateEstimatorServiceName(clusterName string) string {
+func GenerateEstimatorServiceName(estimatorServicePrefix, clusterName string) string {
+	return fmt.Sprintf("%s-%s", estimatorServicePrefix, clusterName)
+}
+
+// GenerateEstimatorDeploymentName generates the gRPC scheduler estimator deployment name which belongs to a cluster.
+func GenerateEstimatorDeploymentName(clusterName string) string {
 	return fmt.Sprintf("%s-%s", estimatorServicePrefix, clusterName)
 }
 
@@ -120,4 +144,22 @@ func IsReservedNamespace(namespace string) bool {
 // GenerateImpersonationSecretName generates the secret name of impersonation secret.
 func GenerateImpersonationSecretName(clusterName string) string {
 	return fmt.Sprintf("%s-impersonator", clusterName)
+}
+
+// GeneratePolicyName generates the propagationPolicy name
+func GeneratePolicyName(namespace, name, gvk string) string {
+	hash := fnv.New32a()
+	hashutil.DeepHashObject(hash, namespace+gvk)
+
+	// The name of resources, like 'Role'/'ClusterRole'/'RoleBinding'/'ClusterRoleBinding',
+	// may contain symbols(like ':') that are not allowed by CRD resources which require the
+	// name can be used as a DNS subdomain name. So, we need to replace it.
+	// These resources may also allow for other characters(like '&','$') that are not allowed
+	// by CRD resources, we only handle the most common ones now for performance concerns.
+	// For more information about the DNS subdomain name, please refer to
+	// https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names.
+	if strings.Contains(name, ":") {
+		name = strings.ReplaceAll(name, ":", ".")
+	}
+	return strings.ToLower(fmt.Sprintf("%s-%s", name, rand.SafeEncodeString(fmt.Sprint(hash.Sum32()))))
 }

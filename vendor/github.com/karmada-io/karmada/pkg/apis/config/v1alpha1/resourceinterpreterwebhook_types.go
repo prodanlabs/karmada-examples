@@ -5,6 +5,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// ResourceKindResourceInterpreterWebhookConfiguration is kind name of ResourceInterpreterWebhookConfiguration.
+	ResourceKindResourceInterpreterWebhookConfiguration = "ResourceInterpreterWebhookConfiguration"
+	// ResourceSingularResourceInterpreterWebhookConfiguration is singular name of ResourceInterpreterWebhookConfiguration.
+	ResourceSingularResourceInterpreterWebhookConfiguration = "resourceinterpreterwebhookconfiguration"
+	// ResourcePluralResourceInterpreterWebhookConfiguration is plural name of ResourceInterpreterWebhookConfiguration.
+	ResourcePluralResourceInterpreterWebhookConfiguration = "resourceinterpreterwebhookconfigurations"
+	// ResourceNamespaceScopedResourceInterpreterWebhookConfiguration indicates if ResourceInterpreterWebhookConfiguration is NamespaceScoped.
+	ResourceNamespaceScopedResourceInterpreterWebhookConfiguration = false
+)
+
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -97,9 +108,9 @@ const (
 	// Only necessary for those resource types that want to aggregate status to resource template.
 	InterpreterOperationAggregateStatus InterpreterOperation = "AggregateStatus"
 
-	// InterpreterOperationInterpretHealthy indicates that karmada want to figure out the healthy status of a specific object.
-	// Only necessary for those resource types that have and want to reflect their healthy status.
-	InterpreterOperationInterpretHealthy InterpreterOperation = "InterpretHealthy"
+	// InterpreterOperationInterpretHealth indicates that karmada want to figure out the health status of a specific object.
+	// Only necessary for those resource types that have and want to reflect their health status.
+	InterpreterOperationInterpretHealth InterpreterOperation = "InterpretHealth"
 
 	// InterpreterOperationInterpretDependency indicates that karmada want to figure out the dependencies of a specific object.
 	// Only necessary for those resource types that have dependencies resources and expect the dependencies be propagated

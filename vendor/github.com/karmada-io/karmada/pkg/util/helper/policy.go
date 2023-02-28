@@ -1,7 +1,7 @@
 package helper
 
 import (
-	"fmt"
+	"encoding/json"
 
 	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,9 +12,6 @@ import (
 	"github.com/karmada-io/karmada/pkg/util"
 	"github.com/karmada-io/karmada/pkg/util/names"
 )
-
-// DenyReasonResourceSelectorsModify constructs a reason indicating that modify ResourceSelectors is not allowed.
-const DenyReasonResourceSelectorsModify = "modify ResourceSelectors is forbidden"
 
 // SetDefaultSpreadConstraints set default spread constraints if both 'SpreadByField' and 'SpreadByLabel' not set.
 func SetDefaultSpreadConstraints(spreadConstraints []policyv1alpha1.SpreadConstraint) {
@@ -29,22 +26,6 @@ func SetDefaultSpreadConstraints(spreadConstraints []policyv1alpha1.SpreadConstr
 			spreadConstraints[i].MinGroups = 1
 		}
 	}
-}
-
-// ValidateSpreadConstraint tests if the constraints is valid.
-func ValidateSpreadConstraint(spreadConstraints []policyv1alpha1.SpreadConstraint) error {
-	// SpreadByField and SpreadByLabel should not co-exist
-	for _, constraint := range spreadConstraints {
-		if len(constraint.SpreadByField) > 0 && len(constraint.SpreadByLabel) > 0 {
-			return fmt.Errorf("invalid constraints: SpreadByLabel(%s) should not co-exist with spreadByField(%s)", constraint.SpreadByLabel, constraint.SpreadByField)
-		}
-
-		// If MaxGroups provided, it should greater or equal than MinGroups.
-		if constraint.MaxGroups > 0 && constraint.MaxGroups < constraint.MinGroups {
-			return fmt.Errorf("maxGroups(%d) lower than minGroups(%d) is not allowed", constraint.MaxGroups, constraint.MinGroups)
-		}
-	}
-	return nil
 }
 
 // IsDependentOverridesPresent checks if a PropagationPolicy's dependent OverridePolicy all exist.
@@ -119,4 +100,41 @@ func GenerateResourceSelectorForServiceImport(svcImport policyv1alpha1.ResourceS
 			},
 		},
 	}
+}
+
+// IsReplicaDynamicDivided checks if a PropagationPolicy schedules replicas as dynamic.
+func IsReplicaDynamicDivided(strategy *policyv1alpha1.ReplicaSchedulingStrategy) bool {
+	if strategy == nil || strategy.ReplicaSchedulingType != policyv1alpha1.ReplicaSchedulingTypeDivided {
+		return false
+	}
+
+	switch strategy.ReplicaDivisionPreference {
+	case policyv1alpha1.ReplicaDivisionPreferenceWeighted:
+		return strategy.WeightPreference != nil && len(strategy.WeightPreference.DynamicWeight) != 0
+	case policyv1alpha1.ReplicaDivisionPreferenceAggregated:
+		return true
+	default:
+		return false
+	}
+}
+
+// GetAppliedPlacement will get applied placement from annotations.
+func GetAppliedPlacement(annotations map[string]string) (*policyv1alpha1.Placement, error) {
+	appliedPlacement := util.GetLabelValue(annotations, util.PolicyPlacementAnnotation)
+	if len(appliedPlacement) == 0 {
+		return nil, nil
+	}
+	placement := &policyv1alpha1.Placement{}
+	if err := json.Unmarshal([]byte(appliedPlacement), placement); err != nil {
+		return nil, err
+	}
+	return placement, nil
+}
+
+// SetReplicaDivisionPreferenceWeighted Set the default value of ReplicaDivisionPreference to Weighted
+func SetReplicaDivisionPreferenceWeighted(strategy *policyv1alpha1.ReplicaSchedulingStrategy) {
+	if strategy == nil || strategy.ReplicaSchedulingType != policyv1alpha1.ReplicaSchedulingTypeDivided || strategy.ReplicaDivisionPreference != "" {
+		return
+	}
+	strategy.ReplicaDivisionPreference = policyv1alpha1.ReplicaDivisionPreferenceWeighted
 }

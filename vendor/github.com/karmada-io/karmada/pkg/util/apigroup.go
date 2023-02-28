@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"strings"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	clusterv1alpha1 "github.com/karmada-io/karmada/pkg/apis/cluster/v1alpha1"
 	configv1alpha1 "github.com/karmada-io/karmada/pkg/apis/config/v1alpha1"
+	networkingv1alpha1 "github.com/karmada-io/karmada/pkg/apis/networking/v1alpha1"
 	policyv1alpha1 "github.com/karmada-io/karmada/pkg/apis/policy/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha1"
 )
@@ -41,10 +43,13 @@ func NewSkippedResourceConfig() *SkippedResourceConfig {
 	r.DisableGroup(policyv1alpha1.GroupVersion.Group)
 	r.DisableGroup(workv1alpha1.GroupVersion.Group)
 	r.DisableGroup(configv1alpha1.GroupVersion.Group)
-
+	r.DisableGroup(networkingv1alpha1.GroupVersion.Group)
 	// disable event by default
 	r.DisableGroup(eventsv1.GroupName)
 	r.DisableGroupVersionKind(corev1EventGVK)
+
+	// disable Lease by default
+	r.DisableGroupVersion(coordinationv1.SchemeGroupVersion)
 	return r
 }
 
@@ -159,6 +164,11 @@ func (r *SkippedResourceConfig) GroupDisabled(g string) bool {
 // DisableGroup to disable group.
 func (r *SkippedResourceConfig) DisableGroup(g string) {
 	r.Groups[g] = struct{}{}
+}
+
+// DisableGroupVersion to disable GroupVersion.
+func (r *SkippedResourceConfig) DisableGroupVersion(gv schema.GroupVersion) {
+	r.GroupVersions[gv] = struct{}{}
 }
 
 // DisableGroupVersionKind to disable GroupVersionKind.
