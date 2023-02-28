@@ -50,7 +50,7 @@ type Controller struct {
 	dynamicClient dynamic.Interface
 }
 
-//Reconcile  The function does not differentiate between create, update or deletion events.
+// Reconcile  The function does not differentiate between create, update or deletion events.
 // Instead it simply reads the state of the cluster at the time it is called.
 func (c *Controller) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	deployment := &appsv1.Deployment{}
@@ -133,11 +133,7 @@ func (c *Controller) skipClusters(deployment *appsv1.Deployment, clusters []clus
 
 func (c *Controller) removeWorks(request ctrl.Request, clusters []clusterv1alpha1.Cluster) error {
 	for _, cluster := range clusters {
-		workNamespace, err := names.GenerateExecutionSpaceName(cluster.Name)
-		if err != nil {
-			klog.Errorf("Failed to get namespace of member cluster %s. err: %v", cluster, err)
-			return err
-		}
+		workNamespace := names.GenerateExecutionSpaceName(cluster.Name)
 
 		worksList, err := c.dynamicClient.Resource(workGVR).Namespace(workNamespace).List(context.TODO(), metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("bootstrapping.karmada.io/%s", request.Name),
@@ -169,11 +165,7 @@ func (c *Controller) buildWorks(deployment *appsv1.Deployment, clusters []string
 	deploymentObj := &unstructured.Unstructured{Object: uncastObj}
 
 	for _, cluster := range clusters {
-		workNamespace, err := names.GenerateExecutionSpaceName(cluster)
-		if err != nil {
-			klog.Errorf("Failed to generate execution space name for member cluster %s, err is %v", cluster, err)
-			return err
-		}
+		workNamespace := names.GenerateExecutionSpaceName(cluster)
 
 		workName := names.GenerateWorkName(deploymentObj.GetKind(), deploymentObj.GetName(), deploymentObj.GetNamespace())
 		objectMeta := metav1.ObjectMeta{

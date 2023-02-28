@@ -28,7 +28,7 @@ type ValidatingAdmission struct {
 func NewValidatingAdmission(mgr manager.Manager) *ValidatingAdmission {
 	clientset, err := util.NewClientSet(mgr.GetConfig())
 	if err != nil {
-		panic(err)
+		klog.Fatal(err)
 	}
 	return &ValidatingAdmission{
 		Client:    mgr.GetClient(),
