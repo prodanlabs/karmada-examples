@@ -96,8 +96,8 @@ func (c *Controller) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.
 		klog.Errorf("Failed to build work for namespace %s. Error: %v.", deployment.GetName(), err)
 		return ctrl.Result{Requeue: true}, err
 	}
-	return reconcile.Result{}, nil
 
+	return reconcile.Result{}, nil
 }
 
 func (c *Controller) skipClusters(deployment *appsv1.Deployment, clusters []clusterv1alpha1.Cluster) []string {

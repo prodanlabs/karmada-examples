@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-headless
+  annotations:
+    service.karmada.io/global: "true"
+  labels:
+    app: nginx
+spec:
+  ports:
+    - port: 80
+      name: web
+  clusterIP: None
+  selector:
+    app: nginx
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  serviceName: "nginx-headless"
+  replicas: 3
+  ordinals:
+    start: 0 #如果 .spec.ordinals.start 字段被设置，则 Pod 将被分配从 .spec.ordinals.start 到 .spec.ordinals.start + .spec.replicas - 1 的序号。
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: nginx
+          image: docker.io/nginx:1.23.3-alpine
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "echo ${POD_NAME} > /usr/share/nginx/html/healthy"]
+            preStop:
+              exec:
+                command: ["/bin/sh","-c","nginx -s quit; while killall -0 nginx; do sleep 1; done"]
+          ports:
+            - containerPort: 80
+              name: web
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 60
+            successThreshold: 1
+            tcpSocket:
+              port: web
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthy
+              port: web
+            failureThreshold: 1
+            periodSeconds: 60
+          volumeMounts:
+            - name: www
+              mountPath: /data
+      volumes:
+        - emptyDir: {}
+          name: www

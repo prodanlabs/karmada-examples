@@ -1,0 +1,17 @@
+apiVersion: policy.karmada.io/v1alpha1
+kind: PropagationPolicy
+metadata:
+  name: nginx
+spec:
+  resourceSelectors:
+    - apiVersion: v1
+      kind: Service
+      name: nginx-headless
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: nginx
+  placement:
+    clusterAffinity:
+      clusterNames:
+        - dev-cluster-01
+        - dev-cluster-02

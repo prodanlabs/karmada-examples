@@ -4,18 +4,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"net"
-	"strconv"
-
+	"github.com/prodanlabs/karmada-examples/cmd/custom-controller-manager/app/options"
+	"github.com/prodanlabs/karmada-examples/pkg/controllers/deployment"
+	"github.com/prodanlabs/karmada-examples/pkg/controllers/dns"
+	"github.com/prodanlabs/karmada-examples/pkg/util"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
+	"net"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-
-	"github.com/prodanlabs/karmada-examples/cmd/custom-controller-manager/app/options"
-	"github.com/prodanlabs/karmada-examples/pkg/controllers/deployment"
-	"github.com/prodanlabs/karmada-examples/pkg/util"
+	"strconv"
+	"time"
 )
 
 const (
@@ -74,6 +74,12 @@ func Run(ctx context.Context, opts *options.Options) error {
 	if err := deployment.AddToManager(mgr); err != nil {
 		return err
 	}
+
+	dnsController := dns.NewController(mgr)
+	if err := dnsController.AddToManager(mgr); err != nil {
+		return err
+	}
+	go dnsController.Worker(5 * time.Second)
 
 	if err := mgr.Start(ctx); err != nil {
 		return fmt.Errorf("controller manager exit: %v", err)
