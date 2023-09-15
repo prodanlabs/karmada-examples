@@ -12,7 +12,7 @@ spec:
       namespace: loki
   overrideRules:
     - overriders:
-        commandOverrider:
+        argsOverrider:
           - containerName: promtail
             operator: add
             value:
@@ -23,7 +23,7 @@ spec:
         clusterNames:
           - member-cluster-1
     - overriders:
-        commandOverrider:
+        argsOverrider:
           - containerName: promtail
             operator: add
             value:
