@@ -1,0 +1,35 @@
+---
+apiVersion: policy.karmada.io/v1alpha1
+kind: OverridePolicy
+metadata:
+  name: loki-promtail
+  nnamespace: loki
+spec:
+  resourceSelectors:
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      name: loki-promtail
+      namespace: loki
+  overrideRules:
+    - overriders:
+        commandOverrider:
+          - containerName: promtail
+            operator: add
+            value:
+              - -client.external-labels=cluster=member-cluster-1
+              - -client.tenant-id=pro
+              - -client.url=http://<loki-addr>/api/prom/push
+      targetCluster:
+        clusterNames:
+          - member-cluster-1
+    - overriders:
+        commandOverrider:
+          - containerName: promtail
+            operator: add
+            value:
+              - -client.external-labels=cluster=member-cluster-2
+              - -client.tenant-id=pro
+              - -client.url=http://<loki-addr>/api/prom/push
+      targetCluster:
+        clusterNames:
+          - member-cluster-2

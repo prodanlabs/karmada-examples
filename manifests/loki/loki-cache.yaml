@@ -1,0 +1,153 @@
+---
+# Source: memcached/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki-cache-memcached
+  namespace: loki
+  labels:
+    app.kubernetes.io/instance: loki-cache
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: memcached
+    helm.sh/chart: memcached-6.6.2
+spec:
+  type: ClusterIP
+  ports:
+    - name: memcache
+      port: 11211
+      targetPort: memcache
+      nodePort: null
+  selector:
+    app.kubernetes.io/instance: loki-cache
+    app.kubernetes.io/name: memcached
+---
+# Source: memcached/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: loki-cache-memcached
+  namespace: "loki"
+  labels:
+    app.kubernetes.io/instance: loki-cache
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: memcached
+    helm.sh/chart: memcached-6.6.2
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: loki-cache-memcached
+  minReplicas: 3
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 90
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
+---
+# Source: memcached/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: loki-cache-memcached
+  namespace: loki
+  labels:
+    app.kubernetes.io/instance: loki-cache
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: memcached
+    helm.sh/chart: memcached-6.6.2
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: loki-cache
+      app.kubernetes.io/name: memcached
+  replicas: 1
+  podManagementPolicy: "Parallel"
+  serviceName: loki-cache-memcached
+  updateStrategy:
+    rollingUpdate: {}
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: loki-cache
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: memcached
+        helm.sh/chart: memcached-6.6.2
+      annotations:
+    spec:
+      
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: loki-cache
+                    app.kubernetes.io/name: memcached
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      securityContext:
+        fsGroup: 1001
+      serviceAccountName: default
+      containers:
+        - name: memcached
+          image: docker.io/bitnami/memcached:1.6.21-debian-11-r84
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          args:
+            - /run.sh
+            - -m 4096m
+            - -I 2048m
+            - -vv
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: MEMCACHED_PORT_NUMBER
+              value: "11211"
+          ports:
+            - name: memcache
+              containerPort: 11211
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+            tcpSocket:
+              port: memcache
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 3
+            tcpSocket:
+              port: memcache
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 4500Mi
+            requests:
+              cpu: 500m
+              memory: 4096Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
